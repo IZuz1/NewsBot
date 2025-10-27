@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv
 import pytz
+import re
 
 # Загружаем переменные из .env файла
 load_dotenv()
@@ -71,13 +72,21 @@ class NewsBot:
 
     def format_telegram_message(self, topic, news_data):
         """
-        Красивая верстка для Telegram: эмодзи, разделители, время по МСК, максимум 2 источника, всё удобно для мобильного.
+        Красивая верстка для Telegram: эмодзи, разделители, время по МСК, максимум 2 источника, структура.
         """
         msk_tz = pytz.timezone('Europe/Moscow')
         timestamp = datetime.now(msk_tz).strftime("%d.%m.%Y %H:%M МСК")
         header = f"🟦 <b>{topic}</b>\n"
         divider = "━━━━━━━━━━━━━━━━━━━━━━━\n"
-        body = f"{news_data['content'].strip()}\n"
+        # Основное - разбиваем полученный текст на абзацы, выделяем факты и даты
+        body_raw = news_data['content'].strip()
+        # Автоматически выделяем даты и "Главное", "Важно", "Факт", "Итог"
+        body = re.sub(r'(?P<date>\d{1,2}\.\d{1,2}(\.\d{2,4})?)', r"📅 <b>\g<date></b>", body_raw)
+        body = re.sub(r"(Главное|Важно|Итог|Факт[^\n]*:)", r"\n🔥 <b>\1</b>", body)
+        body = re.sub(r"(?m)^- ", "▫️ ", body)  # маркеры для списков
+        # Сохраняем переносы абзацев для Telegram
+        body = re.sub(r"\n(?=.)", "\n", body)
+        body = body[:750] + ("..." if len(body) > 750 else "")
         links = ""
         if news_data['sources']:
             links = "🔗 " + " | ".join([
@@ -85,7 +94,7 @@ class NewsBot:
                 for src in news_data['sources'][:2]
             ]) + "\n"
         footer = f"{divider}<i>{timestamp}</i>\n"
-        return header + divider + body + links + footer
+        return header + divider + body + "\n" + links + footer
 
     def send_to_telegram(self, message):
         """Отправляет сообщение в Telegram канал. Возвращает: True если успешно, False если ошибка."""
