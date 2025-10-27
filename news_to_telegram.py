@@ -2,15 +2,14 @@ import requests
 import schedule
 import time
 import os
+import re
 from datetime import datetime
 from dotenv import load_dotenv
 import pytz
-import re
 
 # Загружаем переменные из .env файла
 load_dotenv()
 
-# Ваши ключи и токены
 PERPLEXITY_API_KEY = os.getenv('PERPLEXITY_API_KEY')
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
@@ -36,7 +35,7 @@ class NewsBot:
                 "model": "sonar",
                 "messages": [
                     {
-                        "role": "system", 
+                        "role": "system",
                         "content": "Ты помощник для сбора новостей. Предоставляй только актуальную информацию."
                     },
                     {
@@ -49,7 +48,7 @@ class NewsBot:
                 "search_recency_filter": search_recency,
                 "top_p": 0.9
             }
-            response = requests.post(self.perplexity_url, headers=headers, json=payload, timeout=30)
+            response = requests.post(self.perplexity_url, headers=headers, json=payload, timeout=45)
             response.raise_for_status()
             data = response.json()
             if 'choices' in data and len(data['choices']) > 0:
@@ -72,29 +71,33 @@ class NewsBot:
 
     def format_telegram_message(self, topic, news_data):
         """
-        Красивая верстка для Telegram: эмодзи, разделители, время по МСК, максимум 2 источника, структура.
+        Красивое форматирование для Telegram:
+        - шапка, разделители, время МСК
+        - жирным только главное/итог/факт/важно и эмодзи
+        - максимум 2 источника
+        - убраны * и markdown, все теги — только HTML
         """
         msk_tz = pytz.timezone('Europe/Moscow')
         timestamp = datetime.now(msk_tz).strftime("%d.%m.%Y %H:%M МСК")
-        header = f"🟦 <b>{topic}</b>\n"
-        divider = "━━━━━━━━━━━━━━━━━━━━━━━\n"
-        # Основное - разбиваем полученный текст на абзацы, выделяем факты и даты
+        header = f"🟦 <b>{topic}</b>\n━━━━━━━━━━━━━━━\n"
+        # Оформление ключевых фраз и дат
         body_raw = news_data['content'].strip()
-        # Автоматически выделяем даты и "Главное", "Важно", "Факт", "Итог"
-        body = re.sub(r'(?P<date>\d{1,2}\.\d{1,2}(\.\d{2,4})?)', r"📅 <b>\g<date></b>", body_raw)
-        body = re.sub(r"(Главное|Важно|Итог|Факт[^\n]*:)", r"\n🔥 <b>\1</b>", body)
-        body = re.sub(r"(?m)^- ", "▫️ ", body)  # маркеры для списков
-        # Сохраняем переносы абзацев для Telegram
-        body = re.sub(r"\n(?=.)", "\n", body)
-        body = body[:750] + ("..." if len(body) > 750 else "")
+        body = re.sub(r"(?i)(Главное|Важно|Итог|Факт[^:\n]*:)", r"<b>🔥 \1</b>", body_raw)
+        body = re.sub(r"(\d{1,2}\.\d{1,2}(\.\d{2,4})?)", r"📅 \1", body)
+        body = re.sub(r"(?m)^- ", "— ", body)
+        body = re.sub(r"\*", "", body).replace("**", "")  # убираем лишние *
+        body = re.sub(r"\n{3,}", "\n\n", body)
+        body = body[:700] + ("..." if len(body) > 700 else "")
+        body = body.strip() + "\n"
+        # Источники
         links = ""
         if news_data['sources']:
             links = "🔗 " + " | ".join([
-                f"<a href='{src.get('url', '#')}'>{src.get('title','Источник')[:24]}</a>"
+                f"<a href='{src.get('url', '#')}'><b>{src.get('title','Источник')[:24]}</b></a>"
                 for src in news_data['sources'][:2]
             ]) + "\n"
-        footer = f"{divider}<i>{timestamp}</i>\n"
-        return header + divider + body + "\n" + links + footer
+        footer = f"\n━━━━━━━━━━━━━━━\n<i>{timestamp}</i>\n"
+        return header + body + links + footer
 
     def send_to_telegram(self, message):
         """Отправляет сообщение в Telegram канал. Возвращает: True если успешно, False если ошибка."""
@@ -151,12 +154,10 @@ class NewsBot:
 # ============== ПРИМЕРЫ ИСПОЛЬЗОВАНИЯ ==============
 
 def example_single_news():
-    """Пример 1: Отправить новости один раз"""
     bot = NewsBot(PERPLEXITY_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
     bot.send_news("политическая ситуация в ДНР и ЛНР")
 
 def example_scheduled_news():
-    """Пример 2: Автоматическая отправка по расписанию"""
     bot = NewsBot(PERPLEXITY_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
     # bot.schedule_news("политика ДНР", "10:00")
     # bot.schedule_news("события Украины", "14:00")
@@ -164,7 +165,6 @@ def example_scheduled_news():
     bot.run_scheduler()
 
 def example_multiple_topics():
-    """Пример 3: Отправить новости по нескольким темам"""
     bot = NewsBot(PERPLEXITY_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
     topics = [
         "политическая ситуация в ДНР",
@@ -176,10 +176,7 @@ def example_multiple_topics():
         bot.send_news(topic)
         time.sleep(2)
 
-# ============== ГЛАВНАЯ ПРОГРАММА ==============
-
 if __name__ == "__main__":
-    # Проверяем наличие ключей
     if not PERPLEXITY_API_KEY or not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("❌ Ошибка: Не установлены необходимые переменные окружения!")
         print("Установите в .env файле:")
@@ -187,7 +184,6 @@ if __name__ == "__main__":
         print("  TELEGRAM_BOT_TOKEN=your_token_here")
         print("  TELEGRAM_CHAT_ID=your_chat_id_here")
         exit(1)
-
     print("🤖 NewsBot - Автоматическая отправка новостей в Telegram")
     print("\nВыберите режим:")
     print("1. Отправить новости один раз")
