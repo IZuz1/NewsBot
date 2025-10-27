@@ -1,25 +1,18 @@
-# Полный код для отправки новостей из Perplexity в Telegram канал
-# Установка зависимостей: pip install requests schedule python-dotenv
-
 import requests
 import schedule
 import time
 import os
 from datetime import datetime
 from dotenv import load_dotenv
+import pytz
 
 # Загружаем переменные из .env файла
 load_dotenv()
 
 # Ваши ключи и токены
-PERPLEXITY_API_KEY = os.getenv('PERPLEXITY_API_KEY')  # или вставьте напрямую: "your_api_key_here"
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')  # или вставьте напрямую: "your_token_here"
-TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')      # или вставьте напрямую: "your_chat_id_here"
-
-# Если используете вставку напрямую (не рекомендуется для production):
-# PERPLEXITY_API_KEY = "ppl_your_api_key_here"
-# TELEGRAM_BOT_TOKEN = "123456789:ABCDefGHIjklmnoPQRstuvWXYZ"
-# TELEGRAM_CHAT_ID = "123456789"
+PERPLEXITY_API_KEY = os.getenv('PERPLEXITY_API_KEY')
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 class NewsBot:
     """Класс для управления сбором новостей и отправкой в Telegram"""
@@ -32,12 +25,7 @@ class NewsBot:
         self.telegram_url = f"https://api.telegram.org/bot{self.telegram_token}/sendMessage"
 
     def get_news_from_perplexity(self, topic, search_recency="day"):
-        """
-        Получает новости по заданной теме из Perplexity API
-        - topic: тема для поиска новостей
-        - search_recency: фильтр по времени (hour, day, week, month)
-        Возвращает: текст с новостями или None при ошибке
-        """
+        """Получает новости по заданной теме из Perplexity API."""
         try:
             headers = {
                 "Authorization": f"Bearer {self.perplexity_key}",
@@ -46,17 +34,25 @@ class NewsBot:
             payload = {
                 "model": "sonar",
                 "messages": [
-                    {"role": "system", "content": "Ты помощник для сбора новостей. Предоставляй только актуальную информацию."},
-                    {"role": "user", "content": f"Какие главные новости сейчас в области: {topic}? Дай краткий обзор с ссылками."}
+                    {
+                        "role": "system", 
+                        "content": "Ты помощник для сбора новостей. Предоставляй только актуальную информацию."
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Какие главные новости сейчас в области: {topic}? Дай краткий обзор с ссылками."
+                    }
                 ],
                 "max_tokens": 800,
                 "temperature": 0.2,
                 "search_recency_filter": search_recency,
                 "top_p": 0.9
             }
+
             response = requests.post(self.perplexity_url, headers=headers, json=payload, timeout=30)
             response.raise_for_status()
             data = response.json()
+
             if 'choices' in data and len(data['choices']) > 0:
                 content = data['choices'][0]['message']['content']
                 sources = data.get('search_results', [])
@@ -76,10 +72,9 @@ class NewsBot:
             return None
 
     def format_telegram_message(self, topic, news_data):
-        """
-        Форматирует сообщение для Telegram (КОМПАКТНО!)
-        """
-        timestamp = datetime.now().strftime("%d.%m.%Y %H:%M")
+        """Форматирует сообщение для Telegram (компактно, максимум 2 источника, время по Москве)."""
+        msk_tz = pytz.timezone('Europe/Moscow')
+        timestamp = datetime.now(msk_tz).strftime("%d.%m.%Y %H:%M МСК")
         msg = f"<b>📰 {topic}</b>\n"
         msg += f"<i>{timestamp}</i>\n\n"
         msg += f"{news_data['content'].strip()}\n"
@@ -92,11 +87,7 @@ class NewsBot:
         return msg
 
     def send_to_telegram(self, message):
-        """
-        Отправляет сообщение в Telegram канал
-        - message: текст сообщения
-        Возвращает: True если успешно, False если ошибка
-        """
+        """Отправляет сообщение в Telegram канал. Возвращает: True если успешно, False если ошибка."""
         try:
             data = {
                 "chat_id": self.telegram_chat_id,
@@ -120,10 +111,7 @@ class NewsBot:
             return False
 
     def send_news(self, topic):
-        """
-        Основная функция - собирает новости и отправляет в Telegram
-        - topic: тема для поиска новостей
-        """
+        """Основная функция - собирает новости и отправляет в Telegram."""
         print(f"🔍 Ищем новости по теме: {topic}")
         news_data = self.get_news_from_perplexity(topic, search_recency="day")
         if news_data is None:
@@ -136,11 +124,7 @@ class NewsBot:
         return success
 
     def schedule_news(self, topic, time_str):
-        """
-        Планирует отправку новостей по расписанию
-        - topic: тема для поиска
-        - time_str: время в формате \"HH:MM\" (например \"10:30\")
-        """
+        """Планирует отправку новостей по расписанию (например, '10:00')."""
         schedule.every().day.at(time_str).do(self.send_news, topic=topic)
         print(f"📅 Расписание установлено: {topic} - каждый день в {time_str}")
 
@@ -152,17 +136,14 @@ class NewsBot:
                 schedule.run_pending()
                 time.sleep(60)
         except KeyboardInterrupt:
-            print("\\n⛔ Планировщик остановлен")
+            print("\n⛔ Планировщик остановлен")
 
-
-# ============== ПРИМЕРЫ ==============
+# ============== ПРИМЕРЫ ИСПОЛЬЗОВАНИЯ ==============
 
 def example_single_news():
     """Пример 1: Отправить новости один раз"""
     bot = NewsBot(PERPLEXITY_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
     bot.send_news("политическая ситуация в ДНР и ЛНР")
-    # bot.send_news("события в Украине")
-    # bot.send_news("криптовалюты и рынок")
 
 def example_scheduled_news():
     """Пример 2: Автоматическая отправка по расписанию"""
@@ -181,13 +162,14 @@ def example_multiple_topics():
         "социальная политика на подконтрольных территориях"
     ]
     for topic in topics:
-        print(f"\\n{'='*50}")
+        print(f"\n{'='*50}")
         bot.send_news(topic)
         time.sleep(2)
 
 # ============== ГЛАВНАЯ ПРОГРАММА ==============
 
 if __name__ == "__main__":
+    # Проверяем наличие ключей
     if not PERPLEXITY_API_KEY or not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("❌ Ошибка: Не установлены необходимые переменные окружения!")
         print("Установите в .env файле:")
@@ -197,11 +179,11 @@ if __name__ == "__main__":
         exit(1)
 
     print("🤖 NewsBot - Автоматическая отправка новостей в Telegram")
-    print("\\nВыберите режим:")
+    print("\nВыберите режим:")
     print("1. Отправить новости один раз")
     print("2. Запустить планировщик (по расписанию)")
     print("3. Отправить по нескольким темам")
-    choice = input("\\nВаш выбор (1-3): ").strip()
+    choice = input("\nВаш выбор (1-3): ").strip()
     if choice == "1":
         example_single_news()
     elif choice == "2":
