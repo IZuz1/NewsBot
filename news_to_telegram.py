@@ -223,9 +223,9 @@ def example_scheduled_news():
     bot = NewsBot(PERPLEXITY_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
     
     # Настраиваем расписание
-    # bot.schedule_news("политика ДНР", "10:00")  # Каждый день в 10:00
-    # bot.schedule_news("события Украины", "14:00")  # Каждый день в 14:00
-    # bot.schedule_news("экономика", "18:00")  # Каждый день в 18:00
+    bot.schedule_news("политика ДНР", "10:00")  # Каждый день в 10:00
+    bot.schedule_news("события Украины", "14:00")  # Каждый день в 14:00
+    bot.schedule_news("экономика", "18:00")  # Каждый день в 18:00
     
     # Запускаем планировщик
     bot.run_scheduler()
