@@ -48,11 +48,9 @@ class NewsBot:
                 "search_recency_filter": search_recency,
                 "top_p": 0.9
             }
-
             response = requests.post(self.perplexity_url, headers=headers, json=payload, timeout=30)
             response.raise_for_status()
             data = response.json()
-
             if 'choices' in data and len(data['choices']) > 0:
                 content = data['choices'][0]['message']['content']
                 sources = data.get('search_results', [])
@@ -72,19 +70,22 @@ class NewsBot:
             return None
 
     def format_telegram_message(self, topic, news_data):
-        """Форматирует сообщение для Telegram (компактно, максимум 2 источника, время по Москве)."""
+        """
+        Красивая верстка для Telegram: эмодзи, разделители, время по МСК, максимум 2 источника, всё удобно для мобильного.
+        """
         msk_tz = pytz.timezone('Europe/Moscow')
         timestamp = datetime.now(msk_tz).strftime("%d.%m.%Y %H:%M МСК")
-        msg = f"<b>📰 {topic}</b>\n"
-        msg += f"<i>{timestamp}</i>\n\n"
-        msg += f"{news_data['content'].strip()}\n"
+        header = f"🟦 <b>{topic}</b>\n"
+        divider = "━━━━━━━━━━━━━━━━━━━━━━━\n"
+        body = f"{news_data['content'].strip()}\n"
+        links = ""
         if news_data['sources']:
-            links = [
-                f"<a href='{src.get('url', '#')}'>{src.get('title', 'Источник')[:30]}</a>"
+            links = "🔗 " + " | ".join([
+                f"<a href='{src.get('url', '#')}'>{src.get('title','Источник')[:24]}</a>"
                 for src in news_data['sources'][:2]
-            ]
-            msg += '\n🔗 ' + " | ".join(links)
-        return msg
+            ]) + "\n"
+        footer = f"{divider}<i>{timestamp}</i>\n"
+        return header + divider + body + links + footer
 
     def send_to_telegram(self, message):
         """Отправляет сообщение в Telegram канал. Возвращает: True если успешно, False если ошибка."""
