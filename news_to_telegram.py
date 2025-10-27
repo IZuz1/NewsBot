@@ -94,19 +94,19 @@ class NewsBot:
             print(f"Неожиданная ошибка: {str(e)}")
             return None
     
-    def format_telegram_message(self, topic, news_data):
-    timestamp = datetime.now().strftime("%d.%m.%Y %H:%M")
-    msg = f"<b>📰 {topic}</b>\n"
-    msg += f"<i>{timestamp}</i>\n\n"
-    msg += f"{news_data['content'].strip()}\n"
+        def format_telegram_message(self, topic, news_data):
+            timestamp = datetime.now().strftime("%d.%m.%Y %H:%M")
+            msg = f"<b>📰 {topic}</b>\n"
+            msg += f"<i>{timestamp}</i>\n\n"
+            msg += f"{news_data['content'].strip()}\n"
     # Компонент для компактности — максимум 2 источника, в одну строку через |
-    if news_data['sources']:
-        links = [
-            f"<a href='{src.get('url', '#')}'>{src.get('title', 'Источник')[:30]}</a>"
-            for src in news_data['sources'][:2]
-        ]
-        msg += '\n🔗 ' + " | ".join(links)
-    return msg
+            if news_data['sources']:
+                links = [
+                    f"<a href='{src.get('url', '#')}'>{src.get('title', 'Источник')[:30]}</a>"
+                    for src in news_data['sources'][:2]
+                ]
+                msg += '\n🔗 ' + " | ".join(links)
+            return msg
     
     def send_to_telegram(self, message):
         """
